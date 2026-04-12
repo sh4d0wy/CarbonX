@@ -1,0 +1,40 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-f532362f6cf1e12372a5ae332eeefc3d2a52c694",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "userSourceNameMap": {
+    "contracts/CarbonCreditToken.sol": "project/contracts/CarbonCreditToken.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/CarbonCreditToken.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.28;\n\n/// @title CarbonCreditToken\n/// @notice Minimal ERC20 token with unlimited supply through controlled minting.\ncontract CarbonCreditToken {\n    string public constant name = \"Carbon Credit Token\";\n    string public constant symbol = \"CCT\";\n    uint8 public constant decimals = 18;\n\n    uint256 public totalSupply;\n    address public owner;\n    address public minter;\n\n    mapping(address => uint256) public balanceOf;\n    mapping(address => mapping(address => uint256)) public allowance;\n\n    event Transfer(address indexed from, address indexed to, uint256 value);\n    event Approval(address indexed owner, address indexed spender, uint256 value);\n    event MinterUpdated(address indexed oldMinter, address indexed newMinter);\n\n    modifier onlyOwner() {\n        require(msg.sender == owner, \"CarbonCreditToken: not owner\");\n        _;\n    }\n\n    modifier onlyMinter() {\n        require(msg.sender == minter, \"CarbonCreditToken: not minter\");\n        _;\n    }\n\n    constructor() {\n        owner = msg.sender;\n    }\n\n    function setMinter(address newMinter) external onlyOwner {\n        require(newMinter != address(0), \"CarbonCreditToken: zero address\");\n        emit MinterUpdated(minter, newMinter);\n        minter = newMinter;\n    }\n\n    function transfer(address to, uint256 value) external returns (bool) {\n        _transfer(msg.sender, to, value);\n        return true;\n    }\n\n    function approve(address spender, uint256 value) external returns (bool) {\n        allowance[msg.sender][spender] = value;\n        emit Approval(msg.sender, spender, value);\n        return true;\n    }\n\n    function transferFrom(address from, address to, uint256 value) external returns (bool) {\n        uint256 currentAllowance = allowance[from][msg.sender];\n        require(currentAllowance >= value, \"CarbonCreditToken: insufficient allowance\");\n\n        if (currentAllowance != type(uint256).max) {\n            allowance[from][msg.sender] = currentAllowance - value;\n            emit Approval(from, msg.sender, allowance[from][msg.sender]);\n        }\n\n        _transfer(from, to, value);\n        return true;\n    }\n\n    function mint(address to, uint256 value) external onlyMinter returns (bool) {\n        require(to != address(0), \"CarbonCreditToken: zero address\");\n        totalSupply += value;\n        balanceOf[to] += value;\n        emit Transfer(address(0), to, value);\n        return true;\n    }\n\n    function _transfer(address from, address to, uint256 value) internal {\n        require(to != address(0), \"CarbonCreditToken: zero address\");\n        require(balanceOf[from] >= value, \"CarbonCreditToken: insufficient balance\");\n\n        balanceOf[from] -= value;\n        balanceOf[to] += value;\n        emit Transfer(from, to, value);\n    }\n}"
+      }
+    }
+  }
+}

@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy:sepolia": "hardhat ignition deploy ./ignition/modules/CarbonCreditModule.ts --network sepolia --parameters ./ignition/parameters/sepolia.json",
+    "sync:sepolia:params": "node ./scripts/sync-sepolia-params.mjs",
+    "deploy:sepolia:sync": "pnpm deploy:sepolia && pnpm sync:sepolia:params"
   },
   "keywords": [],
   "author": "",

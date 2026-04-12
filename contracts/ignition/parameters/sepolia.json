@@ -1,0 +1,7 @@
+{
+  "CarbonCreditModule": {
+    "agent": "0x1EaB29Bc22bE5EB46204EfFeC367de1e7e2Bc8EF",
+    "tokenContractAddress": "0x40181750594da252d1999E1Ea9ea65b357F99936",
+    "carbonCreditContractAddress": "0x0e6564D439041F2aAfBb0aE4372Fe01562664d2E"
+  }
+}
