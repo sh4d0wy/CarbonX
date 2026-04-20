@@ -1,30 +1,28 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useConnection, useReadContract } from "wagmi"
+import { useAccount } from "wagmi"
 import { 
   useAdmin,
   useIsAgent,
   useNextLandId,
+  useAgentLandDetails,
   useApproveLand,
   useRejectLand,
   useAddAgent,
   RegistrationStatus,
-  type LandDetails
-} from "@/hooks/useContract"
-import { contractAddress, contractABI } from "@/utils/contractDetails"
+} from "@/hooks/useAgent"
 import { FileText, MapPin, CheckCircle, XCircle, Loader2, Shield, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { type Address } from "viem"
 
 export default function AgentPage() {
-  const { address, isConnected } = useConnection()
+  const { address, isConnected } = useAccount()
   const { data: adminAddress } = useAdmin()
   const { data: isAgentData } = useIsAgent(address)
   const { data: nextLandId, refetch: refetchNextLandId } = useNextLandId()
@@ -85,8 +83,8 @@ export default function AgentPage() {
     )
   }
 
-  const totalLands = nextLandId ? Number(nextLandId) - 1 : 0
-  const landIds = Array.from({ length: totalLands }, (_, i) => i + 1)
+  const totalLands = nextLandId ? Number(nextLandId) : 0
+  const landIds = Array.from({ length: totalLands }, (_, i) => i)
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
@@ -125,6 +123,16 @@ export default function AgentPage() {
         </Card>
       )}
 
+      {isAdmin && !isAgent && (
+        <Card className="mb-8 border-amber-200 bg-amber-50/50">
+          <CardContent className="py-4">
+            <p className="text-sm text-amber-900">
+              You are the contract owner, but not the active agent. You can manage agent address, but approvals/rejections are disabled until this wallet is set as agent.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs defaultValue="pending" className="space-y-6">
         <div className="flex items-center justify-between">
           <TabsList>
@@ -138,7 +146,11 @@ export default function AgentPage() {
         </div>
 
         <TabsContent value="pending">
-          <LandGrid landIds={landIds} statusFilter={RegistrationStatus.Pending} onSelect={setSelectedLandId} />
+          <LandGrid
+            landIds={landIds}
+            statusFilter={RegistrationStatus.Pending}
+            onSelect={isAgent ? setSelectedLandId : undefined}
+          />
         </TabsContent>
 
         <TabsContent value="approved">
@@ -150,7 +162,7 @@ export default function AgentPage() {
         </TabsContent>
       </Tabs>
 
-      {selectedLandId !== null && (
+      {selectedLandId !== null && isAgent && (
         <ReviewDialog landId={selectedLandId} onClose={() => setSelectedLandId(null)} />
       )}
     </div>
@@ -184,27 +196,20 @@ function LandCard({
   statusFilter: number
   onSelect?: (id: number) => void
 }) {
-  const { data: landData, isLoading } = useReadContract({
-    address: contractAddress as Address,
-    abi: contractABI,
-    functionName: 'getLandDetails',
-    args: [BigInt(landId)],
-  })
+  const { data: land, isLoading } = useAgentLandDetails(landId)
 
   if (isLoading) return null
-
-  const land = landData as [string, bigint, string, string, string, bigint, bigint, number] | undefined
   if (!land) return null
 
-  const status = Number(land[7])
+  const status = Number(land.status)
   if (status !== statusFilter) return null
 
-  const owner = land[0]
-  const landArea = Number(land[1])
-  const location = land[2]
-  const description = land[3]
-  const imageHash = land[4]
-  const carbonCredits = Number(land[5])
+  const owner = land.owner
+  const landArea = Number(land.landArea)
+  const location = land.location
+  const description = land.description
+  const imageHash = land.imageHash
+  const carbonCredits = Number(land.carbonCredits) / 1e18
 
   const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
   const estimatedCredits = landArea * 15
@@ -256,18 +261,12 @@ function LandCard({
 }
 
 function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void }) {
-  const { data: landData, isLoading } = useReadContract({
-    address: contractAddress as Address,
-    abi: contractABI,
-    functionName: 'getLandDetails',
-    args: [BigInt(landId)],
-  })
+  const { data: land, isLoading } = useAgentLandDetails(landId)
 
   const { approveLand, isPending: isApproving } = useApproveLand()
   const { rejectLand, isPending: isRejecting } = useRejectLand()
   
-  const [carbonCredits, setCarbonCredits] = useState("")
-  const [pricePerCredit, setPricePerCredit] = useState("")
+  const [ndviBps, setNdviBps] = useState("5000")
 
   if (isLoading) {
     return (
@@ -281,27 +280,29 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
     )
   }
 
-  const land = landData as [string, bigint, string, string, string, bigint, bigint, number] | undefined
   if (!land) return null
 
-  const owner = land[0]
-  const landArea = Number(land[1])
-  const location = land[2]
-  const description = land[3]
-  const imageHash = land[4]
-  const estimatedCredits = landArea * 15
+  const owner = land.owner
+  const landArea = Number(land.landArea)
+  const location = land.location
+  const description = land.description
+  const imageHash = land.imageHash
 
   const handleApprove = async () => {
     try {
-      const credits = parseInt(carbonCredits)
-      if (isNaN(credits) || credits <= 0) throw new Error("Invalid credits")
-      if (!pricePerCredit || parseFloat(pricePerCredit) <= 0) throw new Error("Invalid price")
+      const ndvi = parseInt(ndviBps)
+      if (isNaN(ndvi) || ndvi < 0 || ndvi > 10000) throw new Error("NDVI must be between 0 and 10000")
       
-      await approveLand(landId, credits, pricePerCredit)
-      alert(`Land #${landId} approved!\n\n✅ ${credits} carbon credits minted to landowner\n✅ Listing automatically created on marketplace at ${pricePerCredit} ETH per credit`)
+      await approveLand(landId, ndvi)
+      alert(`Land #${landId} approved!\n\n✅ Credits calculated and minted to landowner.`)
       onClose()
     } catch (e: any) {
-      alert(`Error: ${e.message}`)
+      const message =
+        e?.shortMessage ||
+        e?.cause?.shortMessage ||
+        e?.message ||
+        "Approval failed"
+      alert(`Error: ${message}`)
     }
   }
 
@@ -361,36 +362,28 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
 
           <div className="border-t pt-4">
             <h4 className="font-medium mb-4">Approval Details</h4>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-1">
               <div className="space-y-2">
-                <Label>Carbon Credits</Label>
+                <Label>NDVI (basis points)</Label>
                 <Input
                   type="number"
-                  placeholder={`Suggested: ${estimatedCredits}`}
-                  value={carbonCredits}
-                  onChange={(e) => setCarbonCredits(e.target.value)}
+                  min="0"
+                  max="10000"
+                  placeholder="e.g., 5000"
+                  value={ndviBps}
+                  onChange={(e) => setNdviBps(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">~{estimatedCredits} CC recommended</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Price per Credit (ETH)</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  placeholder="e.g., 0.01"
-                  value={pricePerCredit}
-                  onChange={(e) => setPricePerCredit(e.target.value)}
-                />
+                <p className="text-xs text-muted-foreground">0 = 0.0, 10000 = 1.0</p>
               </div>
             </div>
           </div>
 
-          {carbonCredits && pricePerCredit && (
+          {ndviBps && (
             <div className="p-4 bg-primary/10 rounded-lg space-y-2">
               <p className="text-sm font-medium">Upon Approval:</p>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>✅ {parseInt(carbonCredits).toLocaleString()} credits minted to landowner</li>
-                <li>✅ Listing auto-created at {pricePerCredit} ETH/credit</li>
+                <li>✅ Credits will be calculated using NDVI {ndviBps} bps</li>
+                <li>✅ Tokens will be minted to landowner</li>
               </ul>
             </div>
           )}
@@ -408,10 +401,10 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
           </Button>
           <Button
             onClick={handleApprove}
-            disabled={isProcessing || !carbonCredits || !pricePerCredit}
+            disabled={isProcessing || !ndviBps}
           >
             {isProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-            Approve & Mint
+            Calculate & Approve
           </Button>
         </DialogFooter>
       </DialogContent>

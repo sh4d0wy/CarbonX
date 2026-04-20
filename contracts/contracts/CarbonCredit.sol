@@ -31,6 +31,7 @@ contract CarbonCredit {
 
     struct CreditSale {
         uint256 id;
+        uint256 landId;
         address seller;
         uint256 tokenAmount;
         uint256 priceWei;
@@ -123,8 +124,8 @@ contract CarbonCredit {
         entryId = nextLandEntryId++;
         LandEntry storage entry = landEntries[entryId];
         entry.id = entryId;
-        entry.latitude = latitude;
-        entry.longitude = longitude;
+        entry.latitude = latitude * 1_000_000;
+        entry.longitude = longitude * 1_000_000;
         entry.radiusMeters = radiusMeters;
         entry.areaSqMeters = areaSqMeters;
         entry.owner = walletAddress;
@@ -187,11 +188,12 @@ contract CarbonCredit {
     }
 
     /// @notice Seller escrows tokenAmount in this contract until purchase or cancel.
-    function listCreditsForSale(uint256 tokenAmount, uint256 priceWei)
+    function listCreditsForSale(uint256 landId, uint256 tokenAmount, uint256 priceWei)
         external
         nonReentrant
         returns (uint256 saleId)
     {
+        require(landEntries[landId].owner == msg.sender, "CarbonCredit: not land owner");
         require(tokenAmount > 0, "CarbonCredit: token amount is zero");
         require(priceWei > 0, "CarbonCredit: price is zero");
 
@@ -201,6 +203,7 @@ contract CarbonCredit {
         saleId = nextSaleId++;
         sales[saleId] = CreditSale({
             id: saleId,
+            landId: landId,
             seller: msg.sender,
             tokenAmount: tokenAmount,
             priceWei: priceWei,

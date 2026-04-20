@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Circle, CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet"
+import { Loader2 } from "lucide-react"
 
 type Region = {
   lat: number
@@ -37,6 +38,20 @@ function ClickToSelect({ onMapClick }: { onMapClick: (lat: number, lng: number) 
 }
 
 export function LandRegionMap({ center, zoom, region, onMapClick }: LandRegionMapProps) {
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  if (!isMounted) {
+    return (
+      <div className="overflow-hidden rounded-md border flex items-center justify-center" style={{ height: "340px" }}>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   return (
     <div className="overflow-hidden rounded-md border">
       <MapContainer
@@ -44,6 +59,7 @@ export function LandRegionMap({ center, zoom, region, onMapClick }: LandRegionMa
         zoom={zoom}
         scrollWheelZoom
         style={{ height: "340px", width: "100%" }}
+        key={`${center[0]}-${center[1]}-${zoom}`}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

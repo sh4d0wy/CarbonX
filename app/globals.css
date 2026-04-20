@@ -122,3 +122,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Keep map layers below modal overlays/dialogs */
+.leaflet-container,
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control {
+  z-index: 10 !important;
+}

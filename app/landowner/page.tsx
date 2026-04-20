@@ -8,14 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useAccount, useReadContract } from "wagmi"
-import { 
-  useLandsByOwner,
-  useListCarbonCredits,
-  RegistrationStatus,
-  formatEther
-} from "@/hooks/useContract"
-import { contractAddress, contractABI } from "@/utils/contractDetails"
+import { useAccount } from "wagmi"
+import { useLandsByOwner } from "@/hooks/useLandsByOwner"
+import { useRegisterLand } from "@/hooks/useRegisterLand"
+import { useLandDetails, LandStatus } from "@/hooks/useLandDetails"
+import { useCarbonCreditsBalance } from "@/hooks/useCarbonCreditsBalance"
+import { useListCarbonCredits } from "@/hooks/useListCarbonCredits"
 import { Upload, FileText, CheckCircle2, Clock, XCircle, Loader2, Leaf, DollarSign, Coins } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -96,7 +94,8 @@ function dedupeSearchResults(items: SearchResult[]) {
 
 export default function LandownerPage() {
   const { address, isConnected } = useAccount()
-  const { data: landIds, isLoading: isLoadingLands, refetch } = useLandsByOwner(address)
+  const { data: landIds, isLoading: isLoadingLands, refetch } = useLandsByOwner(address || null)
+  const { registerLand } = useRegisterLand()
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [landArea, setLandArea] = useState("")
@@ -261,7 +260,7 @@ export default function LandownerPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isConnected) {
+    if (!isConnected || !address) {
       alert("Please connect your wallet first")
       return
     }
@@ -270,6 +269,10 @@ export default function LandownerPage() {
       const landAreaNum = parseInt(landArea)
       if (isNaN(landAreaNum) || landAreaNum <= 0) {
         throw new Error("Invalid land area")
+      }
+
+      if (!imageHash.trim()) {
+        throw new Error("IPFS hash is required for document verification")
       }
 
       const region = selectedRegion || { lat: mapCenter[0], lng: mapCenter[1], radius: mapRadius }
@@ -294,19 +297,38 @@ export default function LandownerPage() {
       }
 
       console.log("NDVI API response", ndviPayload)
-      console.log("Form submission payload", {
-        landArea: landAreaNum,
-        location,
-        description,
-        imageHash,
-        selectedRegion: region,
+
+      console.log("Registering land on-chain...", {
+        latitude: region.lat,
+        longitude: region.lng,
+        radiusMeters: region.radius,
+        areaSqMeters: landAreaNum * 10000, 
+        walletAddress: address,
+        documentIpfsHash: imageHash,
       })
 
-      alert("Submitted. Check browser console for NDVI API response.")
+      const txHash = await registerLand(
+        region.lat,
+        region.lng,
+        region.radius,
+        landAreaNum * 10000, 
+        address,
+        imageHash || ""
+      )
+
+      if (!txHash) {
+        throw new Error("Transaction failed - no hash returned")
+      }
+
+      alert("Land registered successfully! Awaiting agent verification.")
+      
+      await refetch()
+      
       setLandArea("")
       setLocation("")
       setDescription("")
       setImageHash("")
+      setSelectedRegion(null)
     } catch (error: any) {
       alert(`Error: ${error.message || "Submission failed"}`)
     } finally {
@@ -314,7 +336,7 @@ export default function LandownerPage() {
     }
   }
 
-  const ids = (landIds as bigint[]) || []
+  const ids = landIds || []
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
@@ -426,7 +448,6 @@ export default function LandownerPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="imageHash">IPFS Hash (optional)</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="imageHash"
@@ -489,24 +510,14 @@ export default function LandownerPage() {
 }
 
 function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Address }) {
-  const { data: landData, isLoading } = useReadContract({
-    address: contractAddress as Address,
-    abi: contractABI,
-    functionName: 'getLandDetails',
-    args: [BigInt(landId)],
-  })
-
-  const { data: userBalance } = useReadContract({
-    address: contractAddress as Address,
-    abi: contractABI,
-    functionName: 'getCarbonCreditsBalance',
-    args: [ownerAddress, BigInt(landId)],
-  })
-
-  const { listCarbonCredits, isPending: isListing } = useListCarbonCredits()
+  const { land, isLoading } = useLandDetails(landId)
+  const { balance, isLoading: isLoadingBalance } = useCarbonCreditsBalance(ownerAddress)
+  const { listCarbonCredits } = useListCarbonCredits()
+  
   const [showDialog, setShowDialog] = useState(false)
   const [credits, setCredits] = useState("")
   const [price, setPrice] = useState("")
+  const [isListing, setIsListing] = useState(false)
 
   if (isLoading) {
     return (
@@ -518,22 +529,23 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
     )
   }
 
-  const land = landData as [string, bigint, string, string, string, bigint, bigint, number] | undefined
   if (!land) return null
 
-  const status = Number(land[7])
-  const location = land[2]
-  const landArea = Number(land[1])
-  const description = land[3]
-  const carbonCredits = land[5]
-  const pricePerCredit = land[6]
-  const imageHashValue = land[4]
-  const balance = userBalance ? Number(userBalance) : 0
+  const status = Number(land.status)
+  const latitude = Number(land.latitude)
+  const longitude = Number(land.longitude)
+  const location = `${latitude/( 1_000_000 * 1_000_000)}, ${longitude/ (1_000_000 * 1_000_000)}`
+  const landArea = Number(land.areaSqMeters) / 10000 // Convert back to hectares
+  const carbonCredits = land.calculatedCredits
+  const imageHashValue = land.documentIpfsHash
+  const balanceNum = balance ? Number(balance) / 1000000000000000000 : 0 // Convert from 18 decimals
 
   const handleList = async () => {
     try {
+      setIsListing(true)
       const creditsNum = parseInt(credits)
-      if (creditsNum > balance) throw new Error("Insufficient credits")
+      if (creditsNum * 1e18 > Number(balance)) throw new Error("Insufficient credits")
+      
       await listCarbonCredits(landId, creditsNum, price)
       alert("Listing created!")
       setShowDialog(false)
@@ -541,23 +553,25 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
       setPrice("")
     } catch (e: any) {
       alert(`Error: ${e.message}`)
+    } finally {
+      setIsListing(false)
     }
   }
 
   const getStatusIcon = () => {
     switch (status) {
-      case RegistrationStatus.Approved: return <CheckCircle2 className="h-5 w-5 text-accent" />
-      case RegistrationStatus.Pending: return <Clock className="h-5 w-5 text-muted-foreground" />
-      case RegistrationStatus.Rejected: return <XCircle className="h-5 w-5 text-destructive" />
+      case LandStatus.Approved: return <CheckCircle2 className="h-5 w-5 text-accent" />
+      case LandStatus.Pending: return <Clock className="h-5 w-5 text-muted-foreground" />
+      case LandStatus.Rejected: return <XCircle className="h-5 w-5 text-destructive" />
       default: return null
     }
   }
 
   const getStatusBadge = () => {
     switch (status) {
-      case RegistrationStatus.Approved: return <Badge className="bg-accent text-accent-foreground">Approved</Badge>
-      case RegistrationStatus.Pending: return <Badge variant="outline">Pending</Badge>
-      case RegistrationStatus.Rejected: return <Badge variant="destructive">Rejected</Badge>
+      case LandStatus.Approved: return <Badge className="bg-accent text-accent-foreground">Approved</Badge>
+      case LandStatus.Pending: return <Badge variant="outline">Pending</Badge>
+      case LandStatus.Rejected: return <Badge variant="destructive">Rejected</Badge>
       default: return null
     }
   }
@@ -571,65 +585,55 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
               {getStatusIcon()}
               <div>
                 <h3 className="font-semibold">{location}</h3>
-                <p className="text-sm text-muted-foreground">{landArea} ha • #{landId}</p>
+                <p className="text-sm text-muted-foreground">{landArea.toFixed(2)} hectares • #{landId}</p>
               </div>
             </div>
             {getStatusBadge()}
           </div>
 
-          {description && (
-            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{description}</p>
-          )}
-
-          {status === RegistrationStatus.Approved && (
+          {status === LandStatus.Approved && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total Allocated</span>
-                <span>{Number(carbonCredits).toLocaleString()} CC</span>
+                <span>{(Number(carbonCredits) / 1000000000000000000).toLocaleString(undefined, { maximumFractionDigits: 2 })} CC</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground flex items-center gap-1">
                   <Coins className="h-3 w-3" />
                   Your Balance
                 </span>
-                <span className="font-medium text-primary">{balance.toLocaleString()} CC</span>
+                <span className="font-medium text-primary">{balanceNum.toLocaleString(undefined, { maximumFractionDigits: 2 })} CC</span>
               </div>
-              {Number(pricePerCredit) > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Suggested Price</span>
-                  <span>{formatEther(pricePerCredit)} ETH</span>
-                </div>
-              )}
               <div className="pt-2 border-t space-y-2">
                 <p className="text-xs text-muted-foreground text-center">
-                  ✅ Auto-listed on marketplace when approved
+                  ✅ Credits available for sale
                 </p>
-                {balance > 0 && (
+                {balanceNum > 0 && (
                   <Button size="sm" variant="outline" className="w-full gap-2" onClick={() => setShowDialog(true)}>
                     <DollarSign className="h-4 w-4" />
-                    Create Additional Listing
+                    Create Listing
                   </Button>
                 )}
               </div>
             </div>
           )}
 
-          {status === RegistrationStatus.Pending && (
+          {status === LandStatus.Pending && (
             <div className="p-3 bg-muted rounded-lg">
-              <p className="text-sm text-center text-muted-foreground">⏳ Awaiting verification</p>
+              <p className="text-sm text-center text-muted-foreground">⏳ Awaiting agent verification</p>
             </div>
           )}
 
-          {status === RegistrationStatus.Rejected && (
+          {status === LandStatus.Rejected && (
             <div className="p-3 bg-destructive/10 rounded-lg">
-              <p className="text-sm text-center text-destructive">❌ Rejected</p>
+              <p className="text-sm text-center text-destructive">❌ Rejected by agent</p>
             </div>
           )}
 
           {imageHashValue && (
             <div className="mt-3 pt-3 border-t flex items-center gap-2 text-xs text-muted-foreground">
               <FileText className="h-3 w-3" />
-              <span className="truncate">IPFS: {imageHashValue}</span>
+              <span className="truncate">Doc: {imageHashValue}</span>
             </div>
           )}
         </CardContent>
@@ -638,16 +642,16 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Additional Listing</DialogTitle>
+            <DialogTitle>Create Listing</DialogTitle>
             <DialogDescription>
-              Create a new listing for {location}. Your credits were auto-listed when approved, but you can create additional listings at different prices.
+              List your carbon credits for sale at {location}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="p-4 bg-muted rounded-lg">
               <div className="flex justify-between text-sm">
                 <span>Available</span>
-                <span className="font-medium text-primary">{balance} CC</span>
+                <span className="font-medium text-primary">{balanceNum.toFixed(2)} CC</span>
               </div>
             </div>
             <div className="space-y-2">
@@ -655,8 +659,8 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
               <Input
                 type="number"
                 min="1"
-                max={balance}
-                placeholder={`Max: ${balance}`}
+                max={Math.floor(balanceNum)}
+                placeholder={`Max: ${Math.floor(balanceNum)}`}
                 value={credits}
                 onChange={(e) => setCredits(e.target.value)}
               />
