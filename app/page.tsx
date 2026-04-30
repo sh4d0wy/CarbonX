@@ -4,8 +4,9 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useAccount } from "wagmi"
+import { simulateContract } from "@wagmi/core"
+import { config } from "@/lib/wagmi-config"
 import { useActiveSales } from "@/hooks/useActiveSales"
-import { contractAddress, contractABI } from "@/utils/contractDetails"
 import { MapPin, Leaf, TrendingUp, ShoppingCart, Loader2, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -21,12 +22,12 @@ import {
 import { Label } from "@/components/ui/label"
 import { type Address } from "viem"
 import { formatEther, parseEther } from "viem"
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi"
+import { useBuyCredits } from "@/hooks/useBuyCredits"
+import { contractABI, contractAddress } from "@/utils/contractDetails"
 
 export default function MarketplacePage() {
   const { address, isConnected } = useAccount()
-  const { activeSales, isLoading } = useActiveSales()
-  
+  const { activeSales, isLoading } = useActiveSales();
   const [searchTerm, setSearchTerm] = useState("")
   const [sortBy, setSortBy] = useState("newest")
 
@@ -158,31 +159,53 @@ function SaleCard({
 }) {
   const [showDialog, setShowDialog] = useState(false)
   const [amount, setAmount] = useState("1")
-  const { writeContract, isPending } = useWriteContract()
-  const { data: hash } = useWriteContract()
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+  const {buyCredits, isPending: isBuying, isConfirming} = useBuyCredits()
 
-  const availableCredits = Number(sale.tokenAmount)
-  const pricePerCreditEth = formatEther(sale.priceWei)
+ const availableCredits = Number(formatEther(sale.tokenAmount))
+
+  const totalPriceEth = Number(formatEther(sale.priceWei))
+  const pricePerCreditEth = (totalPriceEth / availableCredits).toString()
   const isOwnListing = currentAddress?.toLowerCase() === sale.seller.toLowerCase()
 
   const handlePurchase = async () => {
-    const creditsNum = parseInt(amount);
-    if (isNaN(creditsNum) || creditsNum <= 0 || creditsNum > availableCredits) {
-      alert("Invalid amount");
-      return;
+  try {
+    const credits = parseFloat(amount)
+    if (isNaN(credits) || credits <= 0) {
+      alert("Invalid amount")
+      return
     }
 
-    const totalPrice = (parseFloat(pricePerCreditEth) * creditsNum).toString();
+    const creditsWei = parseEther(credits.toString())
 
-    writeContract({
-      address: contractAddress as `0x${string}`,
+    const valueWei =
+      (creditsWei * sale.priceWei) / sale.tokenAmount
+
+    console.log("Simulating tx...")
+
+    await simulateContract(config, {
+      address: contractAddress,
       abi: contractABI,
       functionName: "buyCredits",
       args: [BigInt(sale.saleId)],
-      value: parseEther(totalPrice),
-    });
-  };
+      value: valueWei,
+    })
+
+    console.log("Simulation passed ✅")
+    buyCredits({
+      saleId: sale.saleId,
+      valueWei,
+    })
+
+  } catch (err: any) {
+    console.error("Simulation failed ❌", err)
+
+    alert(
+      err?.shortMessage ||
+      err?.message ||
+      "Transaction will fail"
+    )
+  }
+}
 
   return (
     <>
@@ -206,7 +229,7 @@ function SaleCard({
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Credits Available</span>
-              <span className="font-medium">{availableCredits / 1000000000000000000} CC</span>
+              <span className="font-medium">{availableCredits } CC</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Token ID</span>
@@ -250,7 +273,7 @@ function SaleCard({
             <div className="p-4 bg-muted rounded-lg space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Available</span>
-                <span className="font-medium">{(availableCredits / 1000000000000000000).toLocaleString()} CC</span>
+                <span className="font-medium">{(availableCredits ).toLocaleString()} CC</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Price per Credit</span>
@@ -282,8 +305,8 @@ function SaleCard({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button onClick={handlePurchase} disabled={isPending || isConfirming}>
-              {isPending || isConfirming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            <Button onClick={handlePurchase} disabled={isBuying || isConfirming}>
+              {isBuying || isConfirming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Confirm Purchase
             </Button>
           </DialogFooter>

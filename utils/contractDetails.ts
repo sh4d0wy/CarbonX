@@ -1,6 +1,6 @@
 import { Abi } from "viem";
 
-export const contractAddress = "0xaf6eE487153d56331B80032b98aC0B04bB32dE11" as const;
+export const contractAddress = "0x116949a66f871092df792e33f1053f5828383b74" as const;
 export const contractABI = [
     {
       "inputs": [

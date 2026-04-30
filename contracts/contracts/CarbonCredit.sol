@@ -228,18 +228,33 @@ contract CarbonCredit {
 
     /// @notice Buyer pays ETH; seller receives ETH; buyer receives escrowed credits.
     function buyCredits(uint256 saleId) external payable nonReentrant {
-        CreditSale storage sale = sales[saleId];
-        require(sale.isActive, "CarbonCredit: sale inactive");
-        require(msg.value == sale.priceWei, "CarbonCredit: wrong ETH amount");
+    CreditSale storage sale = sales[saleId];
 
-        sale.isActive = false;
+    require(sale.isActive, "sale inactive");
+    require(msg.value > 0, "zero ETH");
 
-        (bool paidSeller,) = payable(sale.seller).call{value: msg.value}("");
-        require(paidSeller, "CarbonCredit: seller payment failed");
+    uint256 creditsToBuy = (msg.value * sale.tokenAmount) / sale.priceWei;
+    require(creditsToBuy > 0, "amount too small");
 
-        bool delivered = creditToken.transfer(msg.sender, sale.tokenAmount);
-        require(delivered, "CarbonCredit: token delivery failed");
+    uint256 costWei = (creditsToBuy * sale.priceWei) / sale.tokenAmount;
 
-        emit CreditsPurchased(saleId, msg.sender, sale.seller, sale.tokenAmount, sale.priceWei);
+    if (msg.value > costWei) {
+        (bool refunded,) = payable(msg.sender).call{value: msg.value - costWei}("");
+        require(refunded, "refund failed");
     }
+
+    sale.tokenAmount -= creditsToBuy;
+
+    if (sale.tokenAmount == 0) {
+        sale.isActive = false;
+    }
+
+    (bool paidSeller,) = payable(sale.seller).call{value: costWei}("");
+    require(paidSeller, "payment failed");
+
+    bool delivered = creditToken.transfer(msg.sender, creditsToBuy);
+    require(delivered, "transfer failed");
+
+    emit CreditsPurchased(saleId, msg.sender, sale.seller, creditsToBuy, costWei);
+}
 }

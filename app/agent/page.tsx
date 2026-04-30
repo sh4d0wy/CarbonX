@@ -20,6 +20,7 @@ import { FileText, MapPin, CheckCircle, XCircle, Loader2, Shield, AlertTriangle 
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import Link from "next/link"
 
 export default function AgentPage() {
   const { address, isConnected } = useAccount()
@@ -265,6 +266,7 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
 
   const { approveLand, isPending: isApproving } = useApproveLand()
   const { rejectLand, isPending: isRejecting } = useRejectLand()
+  const [isCalculating, setIsCalculating] = useState(false)
   
   const [ndviBps, setNdviBps] = useState("5000")
 
@@ -290,13 +292,16 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
 
   const handleApprove = async () => {
     try {
+      setIsCalculating(true)
+
       const ndvi = parseInt(ndviBps)
       if (isNaN(ndvi) || ndvi < 0 || ndvi > 10000) throw new Error("NDVI must be between 0 and 10000")
-      
+      setIsCalculating(false)
       await approveLand(landId, ndvi)
       alert(`Land #${landId} approved!\n\n✅ Credits calculated and minted to landowner.`)
       onClose()
     } catch (e: any) {
+      setIsCalculating(false)
       const message =
         e?.shortMessage ||
         e?.cause?.shortMessage ||
@@ -356,7 +361,9 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
           {imageHash && (
             <div>
               <p className="text-sm text-muted-foreground mb-1">IPFS Hash</p>
-              <p className="font-mono text-xs bg-muted p-2 rounded break-all">{imageHash}</p>
+              <p className="font-mono text-xs bg-muted p-2 text-underline text-blue-600 rounded break-all"><Link href={`https://${process.env.NEXT_PUBLIC_GATEWAY_URL}/ipfs/${imageHash}`} target="_blank" rel="noopener noreferrer">
+                {imageHash}
+              </Link></p>
             </div>
           )}
 
@@ -403,8 +410,17 @@ function ReviewDialog({ landId, onClose }: { landId: number; onClose: () => void
             onClick={handleApprove}
             disabled={isProcessing || !ndviBps}
           >
-            {isProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-            Calculate & Approve
+            {(isCalculating || isApproving) ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                {isCalculating ? "Calculating..." : "Approving..."}
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Calculate & Approve
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

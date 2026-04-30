@@ -1,21 +1,38 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useEffect, useState } from "react"
-import dynamic from "next/dynamic"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { useAccount } from "wagmi"
-import { useLandsByOwner } from "@/hooks/useLandsByOwner"
-import { useRegisterLand } from "@/hooks/useRegisterLand"
-import { useLandDetails, LandStatus } from "@/hooks/useLandDetails"
-import { useCarbonCreditsBalance } from "@/hooks/useCarbonCreditsBalance"
-import { useListCarbonCredits } from "@/hooks/useListCarbonCredits"
-import { Upload, FileText, CheckCircle2, Clock, XCircle, Loader2, Leaf, DollarSign, Coins } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import type React from "react";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useAccount } from "wagmi";
+import { useLandsByOwner } from "@/hooks/useLandsByOwner";
+import { useRegisterLand } from "@/hooks/useRegisterLand";
+import { useLandDetails, LandStatus } from "@/hooks/useLandDetails";
+import { useCarbonCreditsBalance } from "@/hooks/useCarbonCreditsBalance";
+import { useListCarbonCredits } from "@/hooks/useListCarbonCredits";
+import {
+  Upload,
+  FileText,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Loader2,
+  Leaf,
+  DollarSign,
+  Coins,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import axios from "axios";
 import {
   Dialog,
   DialogContent,
@@ -23,126 +40,145 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog"
-import { type Address } from "viem"
+} from "@/components/ui/dialog";
+import { type Address } from "viem";
 
 const LandRegionMap = dynamic(
-  () => import("@/components/land-region-map").then((module) => module.LandRegionMap),
-  { ssr: false }
-)
+  () =>
+    import("@/components/land-region-map").then(
+      (module) => module.LandRegionMap,
+    ),
+  { ssr: false },
+);
 
 type SelectedRegion = {
-  lat: number
-  lng: number
-  radius: number
-}
+  lat: number;
+  lng: number;
+  radius: number;
+};
 
 type SearchResult = {
-  displayName: string
-  lat: number
-  lng: number
-}
+  displayName: string;
+  lat: number;
+  lng: number;
+};
 
 type NominatimResult = {
-  lat: string
-  lon: string
-  display_name: string
-}
+  lat: string;
+  lon: string;
+  display_name: string;
+};
 
 type PhotonFeature = {
-  geometry?: { coordinates?: [number, number] }
+  geometry?: { coordinates?: [number, number] };
   properties?: {
-    name?: string
-    street?: string
-    city?: string
-    state?: string
-    country?: string
-    postcode?: string
-  }
-}
+    name?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postcode?: string;
+  };
+};
 
 function normalizeQuery(input: string) {
   return input
     .replace(/\s*,\s*/g, ", ")
     .replace(/,+/g, ",")
     .replace(/\s{2,}/g, " ")
-    .trim()
+    .trim();
 }
 
 function buildPhotonLabel(feature: PhotonFeature) {
-  const props = feature.properties
-  if (!props) return ""
+  const props = feature.properties;
+  if (!props) return "";
 
-  return [props.name, props.street, props.city, props.state, props.postcode, props.country]
+  return [
+    props.name,
+    props.street,
+    props.city,
+    props.state,
+    props.postcode,
+    props.country,
+  ]
     .filter(Boolean)
-    .join(", ")
+    .join(", ");
 }
 
 function dedupeSearchResults(items: SearchResult[]) {
-  const seen = new Set<string>()
-  const unique: SearchResult[] = []
+  const seen = new Set<string>();
+  const unique: SearchResult[] = [];
 
   for (const item of items) {
-    const key = `${item.displayName.toLowerCase()}|${item.lat.toFixed(6)}|${item.lng.toFixed(6)}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    unique.push(item)
+    const key = `${item.displayName.toLowerCase()}|${item.lat.toFixed(6)}|${item.lng.toFixed(6)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
   }
 
-  return unique
+  return unique;
 }
 
 export default function LandownerPage() {
-  const { address, isConnected } = useAccount()
-  const { data: landIds, isLoading: isLoadingLands, refetch } = useLandsByOwner(address || null)
-  const { registerLand } = useRegisterLand()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  
-  const [landArea, setLandArea] = useState("")
-  const [location, setLocation] = useState("")
-  const [description, setDescription] = useState("")
-  const [imageHash, setImageHash] = useState("")
-  const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629])
-  const [mapZoom, setMapZoom] = useState(5)
-  const [mapRadius, setMapRadius] = useState(500)
-  const [selectedRegion, setSelectedRegion] = useState<SelectedRegion | null>(null)
-  const [isSearchingLocation, setIsSearchingLocation] = useState(false)
-  const [skipNextSearch, setSkipNextSearch] = useState(false)
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [locationSearchMessage, setLocationSearchMessage] = useState("")
+  const { address, isConnected } = useAccount();
+  const {
+    data: landIds,
+    isLoading: isLoadingLands,
+    refetch,
+  } = useLandsByOwner(address || null);
+  const { registerLand } = useRegisterLand();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [landArea, setLandArea] = useState("");
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+  const [imageHash, setImageHash] = useState("");
+  const [mapCenter, setMapCenter] = useState<[number, number]>([
+    20.5937, 78.9629,
+  ]);
+  const [mapZoom, setMapZoom] = useState(5);
+  const [mapRadius, setMapRadius] = useState(50);
+  const [selectedRegion, setSelectedRegion] = useState<SelectedRegion | null>(
+    null,
+  );
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [skipNextSearch, setSkipNextSearch] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [locationSearchMessage, setLocationSearchMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
 
   useEffect(() => {
-    if (!selectedRegion) return
+    if (!selectedRegion) return;
 
     console.log("Selected region", {
       lat: selectedRegion.lat,
       lng: selectedRegion.lng,
       radius: selectedRegion.radius,
-    })
-  }, [selectedRegion])
+    });
+  }, [selectedRegion]);
 
   useEffect(() => {
-    const searchText = location.trim()
+    const searchText = location.trim();
 
     if (skipNextSearch) {
-      setSkipNextSearch(false)
-      return
+      setSkipNextSearch(false);
+      return;
     }
 
     if (searchText.length < 3) {
-      setSearchResults([])
-      setIsSearchingLocation(false)
-      setLocationSearchMessage("")
-      return
+      setSearchResults([]);
+      setIsSearchingLocation(false);
+      setLocationSearchMessage("");
+      return;
     }
 
-    const controller = new AbortController()
+    const controller = new AbortController();
     const debounceId = window.setTimeout(async () => {
-      setIsSearchingLocation(true)
-      setLocationSearchMessage("")
+      setIsSearchingLocation(true);
+      setLocationSearchMessage("");
 
       try {
-        const query = normalizeQuery(searchText)
+        const query = normalizeQuery(searchText);
         const nominatimResponse = await fetch(
           `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&addressdetails=1&dedupe=0&q=${encodeURIComponent(query)}`,
           {
@@ -150,133 +186,169 @@ export default function LandownerPage() {
             headers: {
               "Accept-Language": "en",
             },
-          }
-        )
+          },
+        );
 
         if (!nominatimResponse.ok) {
-          throw new Error("Failed to fetch location coordinates")
+          throw new Error("Failed to fetch location coordinates");
         }
 
-        const nominatimData = (await nominatimResponse.json()) as NominatimResult[]
+        const nominatimData =
+          (await nominatimResponse.json()) as NominatimResult[];
 
         const nominatimResults = nominatimData
           .map((item) => {
-            const lat = Number.parseFloat(item.lat)
-            const lng = Number.parseFloat(item.lon)
+            const lat = Number.parseFloat(item.lat);
+            const lng = Number.parseFloat(item.lon);
 
-            if (Number.isNaN(lat) || Number.isNaN(lng)) return null
+            if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
 
             return {
               displayName: item.display_name,
               lat,
               lng,
-            }
+            };
           })
-          .filter((item): item is SearchResult => item !== null)
+          .filter((item): item is SearchResult => item !== null);
 
-        let combinedResults = [...nominatimResults]
+        let combinedResults = [...nominatimResults];
 
         // Fallback provider helps when Nominatim misses very specific local addresses.
         if (combinedResults.length < 3) {
           const photonResponse = await fetch(
             `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lang=en&limit=8`,
-            { signal: controller.signal }
-          )
+            { signal: controller.signal },
+          );
 
           if (photonResponse.ok) {
-            const photonJson = (await photonResponse.json()) as { features?: PhotonFeature[] }
+            const photonJson = (await photonResponse.json()) as {
+              features?: PhotonFeature[];
+            };
             const photonResults = (photonJson.features || [])
               .map((feature) => {
-                const coords = feature.geometry?.coordinates
-                const label = buildPhotonLabel(feature)
-                if (!coords || coords.length < 2 || !label) return null
+                const coords = feature.geometry?.coordinates;
+                const label = buildPhotonLabel(feature);
+                if (!coords || coords.length < 2 || !label) return null;
 
-                const lng = Number(coords[0])
-                const lat = Number(coords[1])
-                if (Number.isNaN(lat) || Number.isNaN(lng)) return null
+                const lng = Number(coords[0]);
+                const lat = Number(coords[1]);
+                if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
 
                 return {
                   displayName: label,
                   lat,
                   lng,
-                }
+                };
               })
-              .filter((item): item is SearchResult => item !== null)
+              .filter((item): item is SearchResult => item !== null);
 
-            combinedResults = [...combinedResults, ...photonResults]
+            combinedResults = [...combinedResults, ...photonResults];
           }
         }
 
-        const uniqueResults = dedupeSearchResults(combinedResults).slice(0, 8)
-        setSearchResults(uniqueResults)
+        const uniqueResults = dedupeSearchResults(combinedResults).slice(0, 8);
+        setSearchResults(uniqueResults);
 
         if (!uniqueResults.length) {
-          setLocationSearchMessage("No exact match found. Try adding city/state or clicking the map manually.")
+          setLocationSearchMessage(
+            "No exact match found. Try adding city/state or clicking the map manually.",
+          );
         }
       } catch (error: any) {
         if (error?.name !== "AbortError") {
-          setSearchResults([])
-          setLocationSearchMessage("Unable to search right now. Please try again or select from the map.")
+          setSearchResults([]);
+          setLocationSearchMessage(
+            "Unable to search right now. Please try again or select from the map.",
+          );
         }
       } finally {
         if (!controller.signal.aborted) {
-          setIsSearchingLocation(false)
+          setIsSearchingLocation(false);
         }
       }
-    }, 350)
+    }, 350);
 
     return () => {
-      window.clearTimeout(debounceId)
-      controller.abort()
+      window.clearTimeout(debounceId);
+      controller.abort();
+    };
+  }, [location, skipNextSearch]);
+
+  const handleFileUpload = async (e:any) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    setFileName(file.name);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      console.log("Upload response", data);
+      setImageHash(data.hash);
+      setUploading(false);
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      setUploading(false);
     }
-  }, [location, skipNextSearch])
+  };
 
   const handleSearchResultSelect = (result: SearchResult) => {
-    setSkipNextSearch(true)
-    setLocation(result.displayName)
-    setSearchResults([])
-    setLocationSearchMessage("")
-    setMapCenter([result.lat, result.lng])
-    setMapZoom(17)
-    setSelectedRegion({ lat: result.lat, lng: result.lng, radius: mapRadius })
-  }
+    setSkipNextSearch(true);
+    setLocation(result.displayName);
+    setSearchResults([]);
+    setLocationSearchMessage("");
+    setMapCenter([result.lat, result.lng]);
+    setMapZoom(17);
+    setSelectedRegion({ lat: result.lat, lng: result.lng, radius: mapRadius });
+  };
 
   const handleMapClick = (lat: number, lng: number) => {
-    setMapCenter([lat, lng])
-    setMapZoom(17)
-    setSelectedRegion({ lat, lng, radius: mapRadius })
-  }
+    setMapCenter([lat, lng]);
+    setMapZoom(17);
+    setSelectedRegion({ lat, lng, radius: mapRadius });
+  };
 
   const handleRadiusChange = (value: string) => {
-    const parsedRadius = Number.parseInt(value, 10)
-    if (Number.isNaN(parsedRadius) || parsedRadius <= 0) return
+    const parsedRadius = Number.parseInt(value, 10);
+    if (Number.isNaN(parsedRadius) || parsedRadius <= 0) return;
 
-    setMapRadius(parsedRadius)
+    setMapRadius(parsedRadius);
     setSelectedRegion((currentRegion) => {
-      if (!currentRegion) return null
-      return { ...currentRegion, radius: parsedRadius }
-    })
-  }
+      if (!currentRegion) return null;
+      return { ...currentRegion, radius: parsedRadius };
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!isConnected || !address) {
-      alert("Please connect your wallet first")
-      return
+      alert("Please connect your wallet first");
+      return;
     }
 
     try {
-      const landAreaNum = parseInt(landArea)
+      const landAreaNum = parseInt(landArea);
       if (isNaN(landAreaNum) || landAreaNum <= 0) {
-        throw new Error("Invalid land area")
+        throw new Error("Invalid land area");
       }
 
       if (!imageHash.trim()) {
-        throw new Error("IPFS hash is required for document verification")
+        throw new Error("IPFS hash is required for document verification");
       }
 
-      const region = selectedRegion || { lat: mapCenter[0], lng: mapCenter[1], radius: mapRadius }
-      setIsSubmitting(true)
+      const region = selectedRegion || {
+        lat: mapCenter[0],
+        lng: mapCenter[1],
+        radius: mapRadius,
+      };
+      setIsSubmitting(true);
 
       const ndviResponse = await fetch("/api/ndvi", {
         method: "POST",
@@ -289,59 +361,61 @@ export default function LandownerPage() {
           areaMeters: region.radius,
           date: new Date().toISOString().split("T")[0],
         }),
-      })
+      });
 
-      const ndviPayload = await ndviResponse.json()
+      const ndviPayload = await ndviResponse.json();
       if (!ndviResponse.ok) {
-        throw new Error(ndviPayload?.error || "NDVI API request failed")
+        throw new Error(ndviPayload?.error || "NDVI API request failed");
       }
 
-      console.log("NDVI API response", ndviPayload)
+      console.log("NDVI API response", ndviPayload);
 
       console.log("Registering land on-chain...", {
         latitude: region.lat,
         longitude: region.lng,
         radiusMeters: region.radius,
-        areaSqMeters: landAreaNum * 10000, 
+        areaSqMeters: landAreaNum * 10000,
         walletAddress: address,
         documentIpfsHash: imageHash,
-      })
+      });
 
       const txHash = await registerLand(
         region.lat,
         region.lng,
         region.radius,
-        landAreaNum * 10000, 
+        landAreaNum * 10000,
         address,
-        imageHash || ""
-      )
+        imageHash || "",
+      );
 
       if (!txHash) {
-        throw new Error("Transaction failed - no hash returned")
+        throw new Error("Transaction failed - no hash returned");
       }
 
-      alert("Land registered successfully! Awaiting agent verification.")
-      
-      await refetch()
-      
-      setLandArea("")
-      setLocation("")
-      setDescription("")
-      setImageHash("")
-      setSelectedRegion(null)
-    } catch (error: any) {
-      alert(`Error: ${error.message || "Submission failed"}`)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+      alert("Land registered successfully! Awaiting agent verification.");
 
-  const ids = landIds || []
+      await refetch();
+
+      setLandArea("");
+      setLocation("");
+      setDescription("");
+      setImageHash("");
+      setSelectedRegion(null);
+    } catch (error: any) {
+      alert(`Error: ${error.message || "Submission failed"}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const ids = landIds || [];
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold tracking-tight mb-2">Landowner Portal</h1>
+        <h1 className="text-4xl font-bold tracking-tight mb-2">
+          Landowner Portal
+        </h1>
         <p className="text-muted-foreground text-lg">
           Register your land and list carbon credits for sale
         </p>
@@ -352,7 +426,9 @@ export default function LandownerPage() {
           <CardContent className="py-12">
             <div className="text-center space-y-2">
               <Leaf className="h-12 w-12 mx-auto text-muted-foreground" />
-              <p className="text-lg font-medium">Connect your wallet to access the portal</p>
+              <p className="text-lg font-medium">
+                Connect your wallet to access the portal
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -388,11 +464,15 @@ export default function LandownerPage() {
                     required
                   />
                   {isSearchingLocation ? (
-                    <p className="text-xs text-muted-foreground">Searching matching addresses...</p>
+                    <p className="text-xs text-muted-foreground">
+                      Searching matching addresses...
+                    </p>
                   ) : null}
                   {searchResults.length > 0 ? (
                     <div className="space-y-2 rounded-md border bg-muted/40 p-2">
-                      <p className="text-xs font-medium text-muted-foreground">Select a matching address</p>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Select a matching address
+                      </p>
                       <div className="max-h-36 space-y-1 overflow-y-auto">
                         {searchResults.map((result, index) => (
                           <Button
@@ -409,14 +489,18 @@ export default function LandownerPage() {
                     </div>
                   ) : null}
                   {!isSearchingLocation && locationSearchMessage ? (
-                    <p className="text-xs text-amber-700">{locationSearchMessage}</p>
+                    <p className="text-xs text-amber-700">
+                      {locationSearchMessage}
+                    </p>
                   ) : null}
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="radius">Region Radius (meters)</Label>
-                    <span className="text-sm text-muted-foreground">{mapRadius} m</span>
+                    <span className="text-sm text-muted-foreground">
+                      {mapRadius} m
+                    </span>
                   </div>
                   <Input
                     id="radius"
@@ -425,13 +509,21 @@ export default function LandownerPage() {
                     value={mapRadius}
                     onChange={(e) => handleRadiusChange(e.target.value)}
                   />
-                  <LandRegionMap center={mapCenter} zoom={mapZoom} region={selectedRegion} onMapClick={handleMapClick} />
+                  <LandRegionMap
+                    center={mapCenter}
+                    zoom={mapZoom}
+                    region={selectedRegion}
+                    onMapClick={handleMapClick}
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Click the map to select the center of your region. Latitude, longitude, and radius are logged to the browser console.
+                    Click the map to select the center of your region. Latitude,
+                    longitude, and radius are logged to the browser console.
                   </p>
                   {selectedRegion ? (
                     <p className="text-xs text-primary">
-                      Selected: {selectedRegion.lat.toFixed(6)}, {selectedRegion.lng.toFixed(6)} | radius {selectedRegion.radius} m
+                      Selected: {selectedRegion.lat.toFixed(6)},{" "}
+                      {selectedRegion.lng.toFixed(6)} | radius{" "}
+                      {selectedRegion.radius} m
                     </p>
                   ) : null}
                 </div>
@@ -448,18 +540,57 @@ export default function LandownerPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="imageHash"
-                      placeholder="IPFS hash for documents"
-                      value={imageHash}
-                      onChange={(e) => setImageHash(e.target.value)}
+                  <Label>Upload Documents</Label>
+
+                  <label
+                    htmlFor="fileUpload"
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/40 hover:bg-muted transition"
+                  >
+                    <div className="flex flex-col items-center justify-center text-center px-4">
+                      {uploading ? (
+                        <>
+                          <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                          <p className="text-sm text-muted-foreground">
+                            Uploading...
+                          </p>
+                        </>
+                      ) : imageHash ? (
+                        <>
+                          <CheckCircle2 className="h-6 w-6 text-green-500 mb-2" />
+                          <p className="text-sm font-medium">
+                            Uploaded successfully
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                            {fileName}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-6 w-6 mb-2 text-muted-foreground" />
+                          <p className="text-sm font-medium">
+                            Click to upload or drag & drop
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            PDF, PNG, JPG (max ~10MB)
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <input
+                      id="fileUpload"
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileUpload}
                     />
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                  </div>
+                  </label>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isSubmitting}
+                >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -476,8 +607,17 @@ export default function LandownerPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-semibold">Your Lands</h2>
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoadingLands}>
-                {isLoadingLands ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refresh"}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+                disabled={isLoadingLands}
+              >
+                {isLoadingLands ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Refresh"
+                )}
               </Button>
             </div>
 
@@ -492,13 +632,19 @@ export default function LandownerPage() {
             ) : ids.length === 0 ? (
               <Card>
                 <CardContent className="py-8">
-                  <p className="text-center text-muted-foreground">No lands registered yet</p>
+                  <p className="text-center text-muted-foreground">
+                    No lands registered yet
+                  </p>
                 </CardContent>
               </Card>
             ) : (
               <div className="space-y-3">
                 {ids.map((id) => (
-                  <LandCard key={Number(id)} landId={Number(id)} ownerAddress={address!} />
+                  <LandCard
+                    key={Number(id)}
+                    landId={Number(id)}
+                    ownerAddress={address!}
+                  />
                 ))}
               </div>
             )}
@@ -506,18 +652,25 @@ export default function LandownerPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Address }) {
-  const { land, isLoading } = useLandDetails(landId)
-  const { balance, isLoading: isLoadingBalance } = useCarbonCreditsBalance(ownerAddress)
-  const { listCarbonCredits } = useListCarbonCredits()
-  
-  const [showDialog, setShowDialog] = useState(false)
-  const [credits, setCredits] = useState("")
-  const [price, setPrice] = useState("")
-  const [isListing, setIsListing] = useState(false)
+function LandCard({
+  landId,
+  ownerAddress,
+}: {
+  landId: number;
+  ownerAddress: Address;
+}) {
+  const { land, isLoading } = useLandDetails(landId);
+  const { balance, isLoading: isLoadingBalance } =
+    useCarbonCreditsBalance(ownerAddress);
+  const { listCarbonCredits } = useListCarbonCredits();
+
+  const [showDialog, setShowDialog] = useState(false);
+  const [credits, setCredits] = useState("");
+  const [price, setPrice] = useState("");
+  const [isListing, setIsListing] = useState(false);
 
   if (isLoading) {
     return (
@@ -526,55 +679,66 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
           <Loader2 className="h-5 w-5 animate-spin" />
         </CardContent>
       </Card>
-    )
+    );
   }
 
-  if (!land) return null
+  if (!land) return null;
 
-  const status = Number(land.status)
-  const latitude = Number(land.latitude)
-  const longitude = Number(land.longitude)
-  const location = `${latitude/( 1_000_000 * 1_000_000)}, ${longitude/ (1_000_000 * 1_000_000)}`
-  const landArea = Number(land.areaSqMeters) / 10000 // Convert back to hectares
-  const carbonCredits = land.calculatedCredits
-  const imageHashValue = land.documentIpfsHash
-  const balanceNum = balance ? Number(balance) / 1000000000000000000 : 0 // Convert from 18 decimals
+  const status = Number(land.status);
+  const latitude = Number(land.latitude);
+  const longitude = Number(land.longitude);
+  const location = `${latitude / (1_000_000 * 1_000_000)}, ${longitude / (1_000_000 * 1_000_000)}`;
+  const landArea = Number(land.areaSqMeters) / 10000; // Convert back to hectares
+  const carbonCredits = land.calculatedCredits;
+  const imageHashValue = land.documentIpfsHash;
+  const balanceNum = balance ? Number(balance) / 1000000000000000000 : 0; // Convert from 18 decimals
 
   const handleList = async () => {
     try {
-      setIsListing(true)
-      const creditsNum = parseInt(credits)
-      if (creditsNum * 1e18 > Number(balance)) throw new Error("Insufficient credits")
-      
-      await listCarbonCredits(landId, creditsNum, price)
-      alert("Listing created!")
-      setShowDialog(false)
-      setCredits("")
-      setPrice("")
+      setIsListing(true);
+      const creditsNum = parseInt(credits);
+      if (creditsNum * 1e18 > Number(balance))
+        throw new Error("Insufficient credits");
+
+      await listCarbonCredits(landId, creditsNum, price);
+      alert("Listing created!");
+      setShowDialog(false);
+      setCredits("");
+      setPrice("");
     } catch (e: any) {
-      alert(`Error: ${e.message}`)
+      alert(`Error: ${e.message}`);
     } finally {
-      setIsListing(false)
+      setIsListing(false);
     }
-  }
+  };
 
   const getStatusIcon = () => {
     switch (status) {
-      case LandStatus.Approved: return <CheckCircle2 className="h-5 w-5 text-accent" />
-      case LandStatus.Pending: return <Clock className="h-5 w-5 text-muted-foreground" />
-      case LandStatus.Rejected: return <XCircle className="h-5 w-5 text-destructive" />
-      default: return null
+      case LandStatus.Approved:
+        return <CheckCircle2 className="h-5 w-5 text-accent" />;
+      case LandStatus.Pending:
+        return <Clock className="h-5 w-5 text-muted-foreground" />;
+      case LandStatus.Rejected:
+        return <XCircle className="h-5 w-5 text-destructive" />;
+      default:
+        return null;
     }
-  }
+  };
 
   const getStatusBadge = () => {
     switch (status) {
-      case LandStatus.Approved: return <Badge className="bg-accent text-accent-foreground">Approved</Badge>
-      case LandStatus.Pending: return <Badge variant="outline">Pending</Badge>
-      case LandStatus.Rejected: return <Badge variant="destructive">Rejected</Badge>
-      default: return null
+      case LandStatus.Approved:
+        return (
+          <Badge className="bg-accent text-accent-foreground">Approved</Badge>
+        );
+      case LandStatus.Pending:
+        return <Badge variant="outline">Pending</Badge>;
+      case LandStatus.Rejected:
+        return <Badge variant="destructive">Rejected</Badge>;
+      default:
+        return null;
     }
-  }
+  };
 
   return (
     <>
@@ -585,7 +749,9 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
               {getStatusIcon()}
               <div>
                 <h3 className="font-semibold">{location}</h3>
-                <p className="text-sm text-muted-foreground">{landArea.toFixed(2)} hectares • #{landId}</p>
+                <p className="text-sm text-muted-foreground">
+                  {landArea.toFixed(2)} hectares • #{landId}
+                </p>
               </div>
             </div>
             {getStatusBadge()}
@@ -595,21 +761,37 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total Allocated</span>
-                <span>{(Number(carbonCredits) / 1000000000000000000).toLocaleString(undefined, { maximumFractionDigits: 2 })} CC</span>
+                <span>
+                  {(Number(carbonCredits) / 1000000000000000000).toLocaleString(
+                    undefined,
+                    { maximumFractionDigits: 2 },
+                  )}{" "}
+                  CC
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground flex items-center gap-1">
                   <Coins className="h-3 w-3" />
                   Your Balance
                 </span>
-                <span className="font-medium text-primary">{balanceNum.toLocaleString(undefined, { maximumFractionDigits: 2 })} CC</span>
+                <span className="font-medium text-primary">
+                  {balanceNum.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  CC
+                </span>
               </div>
               <div className="pt-2 border-t space-y-2">
                 <p className="text-xs text-muted-foreground text-center">
                   ✅ Credits available for sale
                 </p>
                 {balanceNum > 0 && (
-                  <Button size="sm" variant="outline" className="w-full gap-2" onClick={() => setShowDialog(true)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => setShowDialog(true)}
+                  >
                     <DollarSign className="h-4 w-4" />
                     Create Listing
                   </Button>
@@ -620,13 +802,17 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
 
           {status === LandStatus.Pending && (
             <div className="p-3 bg-muted rounded-lg">
-              <p className="text-sm text-center text-muted-foreground">⏳ Awaiting agent verification</p>
+              <p className="text-sm text-center text-muted-foreground">
+                ⏳ Awaiting agent verification
+              </p>
             </div>
           )}
 
           {status === LandStatus.Rejected && (
             <div className="p-3 bg-destructive/10 rounded-lg">
-              <p className="text-sm text-center text-destructive">❌ Rejected by agent</p>
+              <p className="text-sm text-center text-destructive">
+                ❌ Rejected by agent
+              </p>
             </div>
           )}
 
@@ -651,7 +837,9 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
             <div className="p-4 bg-muted rounded-lg">
               <div className="flex justify-between text-sm">
                 <span>Available</span>
-                <span className="font-medium text-primary">{balanceNum.toFixed(2)} CC</span>
+                <span className="font-medium text-primary">
+                  {balanceNum.toFixed(2)} CC
+                </span>
               </div>
             </div>
             <div className="space-y-2">
@@ -687,14 +875,21 @@ function LandCard({ landId, ownerAddress }: { landId: number; ownerAddress: Addr
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button onClick={handleList} disabled={isListing || !credits || !price}>
-              {isListing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            <Button variant="outline" onClick={() => setShowDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleList}
+              disabled={isListing || !credits || !price}
+            >
+              {isListing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               Create Listing
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }

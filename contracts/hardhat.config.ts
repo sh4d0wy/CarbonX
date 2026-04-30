@@ -1,3 +1,4 @@
+import "dotenv/config";
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable, defineConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-ignition";
@@ -36,7 +37,7 @@ export default defineConfig({
     },
     sepolia: {
       type: "http",
-      url: configVariable("SEPOLIA_RPC_URL"),
+      url: "https://ethereum-sepolia-rpc.publicnode.com",
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
     },
   },
